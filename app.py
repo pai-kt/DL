@@ -7,8 +7,42 @@ import plotly.graph_objects as go
 st.set_page_config(
     page_title="토마토 적정생육표 매칭 시스템",
     page_icon="🍅",
-    layout="wide"
+    layout="centered",  # 모바일 친화적으로 변경
+    initial_sidebar_state="collapsed"  # 모바일에서 사이드바 접힘 상태로 시작
 )
+
+# 모바일 친화적 CSS 스타일 추가
+st.markdown("""
+<style>
+    /* 모바일 반응형 스타일 */
+    @media (max-width: 768px) {
+        .main .block-container {
+            padding-top: 1rem;
+            padding-left: 1rem;
+            padding-right: 1rem;
+        }
+        
+        .stSelectbox > div > div {
+            font-size: 14px;
+        }
+        
+        .stButton > button {
+            width: 100%;
+            margin-top: 10px;
+        }
+        
+        /* 테이블 스크롤 가능하게 */
+        .dataframe {
+            overflow-x: auto;
+        }
+    }
+    
+    /* 게이지 차트 모바일 최적화 */
+    .js-plotly-plot {
+        width: 100% !important;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 st.title("🍅 토마토 적정생육표 매칭 시스템")
 st.markdown("---")
@@ -19,12 +53,12 @@ DATA_DIR = "data"
 # Excel 파일 목록
 EXCEL_FILES = {
     "일사량별": {
-        "비닐": "일사량별_비닐_적정생육표.xlsx",
-        "유리": "일사량별_유리_적정생육표.xlsx"
+        "비닐": "Solar_Plastic_Growth_Table.xlsx",
+        "유리": "Solar_Glass_Growth_Table.xlsx"
     },
     "생육상태별": {
-        "비닐": "생육상태별_비닐_적정생육표.xlsx",
-        "유리": "생육상태별_유리_적정생육표.xlsx"
+        "비닐": "GrowthStatus_Plastic_Growth_Table.xlsx",
+        "유리": "GrowthStatus_Glass_Growth_Table.xlsx"
     }
 }
 
@@ -309,9 +343,9 @@ def create_comparison_charts(reference_df: pd.DataFrame, user_df: pd.DataFrame, 
         ))
         
         fig.update_layout(
-            height=300,
-            margin=dict(t=80, b=20, l=20, r=20),
-            font={'size': 12}
+            height=250,  # 모바일에서 더 작은 높이
+            margin=dict(t=60, b=20, l=10, r=10),  # 모바일에서 더 작은 마진
+            font={'size': 10}  # 모바일에서 더 작은 폰트
         )
         
         # 범위 정보 추가
@@ -443,18 +477,27 @@ if uploaded_file is not None:
                                 gauge_figs, valid_comparisons = create_comparison_charts(matched_reference, user_data, column_mapping)
                                 
                                 if gauge_figs:
-                                    # 게이지 차트들을 2개씩 한 줄로 배치
-                                    for i in range(0, len(gauge_figs), 2):
-                                        cols = st.columns(2)
-                                        
-                                        # 첫 번째 게이지
-                                        with cols[0]:
-                                            st.plotly_chart(gauge_figs[i], use_container_width=True)
-                                        
-                                        # 두 번째 게이지 (있는 경우)
-                                        if i + 1 < len(gauge_figs):
-                                            with cols[1]:
-                                                st.plotly_chart(gauge_figs[i + 1], use_container_width=True)
+                                    # 모바일 화면 크기 감지를 위한 JavaScript 대신 간단한 방법 사용
+                                    # 화면이 작을 때는 1개씩, 클 때는 2개씩 배치
+                                    use_single_column = len(gauge_figs) <= 3 or st.sidebar.button("📱 모바일 모드", help="차트를 세로로 배치합니다")
+                                    
+                                    if use_single_column:
+                                        # 모바일: 1개씩 배치
+                                        for fig in gauge_figs:
+                                            st.plotly_chart(fig, use_container_width=True)
+                                    else:
+                                        # 데스크톱: 2개씩 배치
+                                        for i in range(0, len(gauge_figs), 2):
+                                            cols = st.columns(2)
+                                            
+                                            # 첫 번째 게이지
+                                            with cols[0]:
+                                                st.plotly_chart(gauge_figs[i], use_container_width=True)
+                                            
+                                            # 두 번째 게이지 (있는 경우)
+                                            if i + 1 < len(gauge_figs):
+                                                with cols[1]:
+                                                    st.plotly_chart(gauge_figs[i + 1], use_container_width=True)
                                     
                                     # 요약 정보
                                     st.subheader("📋 분석 요약")
