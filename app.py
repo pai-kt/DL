@@ -11,6 +11,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"  # 모바일에서 사이드바 접힘 상태로 시작
 )
 
+
 # 모바일 친화적 CSS 스타일 추가
 st.markdown("""
 <style>
@@ -44,6 +45,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+
 st.title("🍅 토마토 적정생육표 매칭 시스템")
 st.markdown("---")
 
@@ -53,12 +55,12 @@ DATA_DIR = "data"
 # Excel 파일 목록
 EXCEL_FILES = {
     "일사량별": {
-        "비닐": "Solar_Plastic_Growth_Table.xlsx",
-        "유리": "Solar_Glass_Growth_Table.xlsx"
+        "비닐": "일사량별_비닐_적정생육표.xlsx",
+        "유리": "일사량별_유리_적정생육표.xlsx"
     },
     "생육상태별": {
-        "비닐": "GrowthStatus_Plastic_Growth_Table.xlsx",
-        "유리": "GrowthStatus_Glass_Growth_Table.xlsx"
+        "비닐": "생육상태별_비닐_적정생육표.xlsx",
+        "유리": "생육상태별_유리_적정생육표.xlsx"
     }
 }
 
