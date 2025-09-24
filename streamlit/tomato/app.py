@@ -1,7 +1,10 @@
 import streamlit as st
 import pandas as pd
 import os
+import matplotlib.pyplot as plt
+import seaborn as sns
 import plotly.graph_objects as go
+import plotly.express as px
 from typing import Dict, List
 
 # 페이지 설정
@@ -286,10 +289,11 @@ def create_comparison_charts(reference_df: pd.DataFrame, user_df: pd.DataFrame, 
             status = "높음"
         
         fig = go.Figure(go.Indicator(
-            mode = "gauge+number",
+            mode = "gauge+number+delta",
             value = user_avg,
             domain = {'x': [0, 1], 'y': [0, 1]},
             title = {'text': f"{name}<br><span style='font-size:0.8em;color:gray'>{status}</span>"},
+            delta = {'reference': (ref_min + ref_max) / 2},
             gauge = {
                 'axis': {'range': [None, gauge_max]},
                 'bar': {'color': gauge_color},
@@ -403,6 +407,7 @@ if uploaded_file is not None:
                 )
             else:
                 selected_sheet = sheet_names[0]
+                st.info(f"시트 '{selected_sheet}' 자동 선택됨")
             
             user_df = pd.read_excel(uploaded_file, sheet_name=selected_sheet)
         else:
