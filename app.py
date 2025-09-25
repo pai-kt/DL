@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 
 # 페이지 설정
 st.set_page_config(
-    page_title="토마토 최적환경 설정구간 매칭시스템",
+    page_title="완숙토마토 최적환경 설정구간 매칭 시스템",
     page_icon="🍅",
     layout="centered",  # 모바일 친화적으로 변경
     initial_sidebar_state="collapsed"  # 모바일에서 사이드바 접힘 상태로 시작
@@ -57,7 +57,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-st.title("🍅 토마토 최적환경 설정구간 매칭시스템")
+st.title("🍅 완숙토마토 최적환경 설정구간 매칭시스템")
 st.markdown("---")
 
 # 데이터 파일 경로
@@ -564,8 +564,12 @@ else:
 
 st.header("📂 내 농가 데이터 업로드")
 
-# 예시 파일 다운로드 기능
-st.subheader("📥 예시 파일 다운로드")
+# CSV/Excel 파일 업로드
+uploaded_file = st.file_uploader(
+    "CSV 또는 Excel 파일을 업로드하세요",
+    type=['csv', 'xlsx', 'xls'],
+    help="내 농가 데이터를 작성한 CSV 또는 Excel 파일"
+)
 
 # 예시 파일 경로
 example_file_path = "data/test_tomato_data.xlsx"
@@ -576,26 +580,17 @@ try:
             example_file_data = file.read()
         
         st.download_button(
-            label="📊 예시 파일 다운로드 (test_tomato_data.xlsx)",
+            label="농가 데이터 예시 파일 (test_tomato_data.xlsx)",
             data=example_file_data,
             file_name="test_tomato_data.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            help="토마토 환경 데이터 예시 파일을 다운로드하여 참고하세요"
+            help="완숙토마토 환경 데이터 예시 파일을 다운로드하여 참고하세요"
         )
         st.info("💡 위 예시 파일을 다운로드하여 데이터 형식을 참고하거나 테스트용으로 사용하실 수 있습니다.")
     else:
         st.warning("예시 파일을 찾을 수 없습니다.")
 except Exception as e:
     st.error(f"예시 파일 로드 중 오류: {e}")
-
-st.markdown("---")
-
-# CSV/Excel 파일 업로드
-uploaded_file = st.file_uploader(
-    "CSV 또는 Excel 파일을 업로드하세요",
-    type=['csv', 'xlsx', 'xls'],
-    help="누적일사량, 외기기온, 온도, 습도 데이터가 포함된 CSV 또는 Excel 파일"
-)
 
 if uploaded_file is not None:
     try:
