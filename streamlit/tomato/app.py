@@ -48,8 +48,9 @@ st.markdown("""
 st.title("🍅 토마토 적정생육표 매칭 시스템")
 st.markdown("---")
 
-# 데이터 파일 경로
-DATA_DIR = "data"
+# 데이터 파일 경로 (배포 환경에서도 app.py 기준으로 해석)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, "data")
 SAMPLE_FILE = "test_tomato_data.xlsx"
 SAMPLE_FILE_PATH = os.path.join(DATA_DIR, SAMPLE_FILE)
 
