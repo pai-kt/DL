@@ -2,19 +2,73 @@ import streamlit as st
 import pandas as pd
 import os
 import plotly.graph_objects as go
+from openpyxl.utils import get_column_letter
 
 # 페이지 설정
 st.set_page_config(
     page_title="토마토 적정생육표 매칭 시스템",
     page_icon="🍅",
-    layout="wide"
+    layout="centered",  # 모바일 친화적으로 변경
+    initial_sidebar_state="collapsed"  # 모바일에서 사이드바 접힘 상태로 시작
 )
+
+# 모바일 친화적 CSS 스타일 추가
+st.markdown("""
+<style>
+    /* 모바일 반응형 스타일 */
+    @media (max-width: 768px) {
+        .main .block-container {
+            padding-top: 1rem;
+            padding-left: 1rem;
+            padding-right: 1rem;
+        }
+        
+        .stSelectbox > div > div {
+            font-size: 14px;
+        }
+        
+        .stButton > button {
+            width: 100%;
+            margin-top: 10px;
+        }
+        
+        /* 테이블 스크롤 가능하게 */
+        .dataframe {
+            overflow-x: auto;
+        }
+    }
+    
+    /* 게이지 차트 모바일 최적화 */
+    .js-plotly-plot {
+        width: 100% !important;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 st.title("🍅 토마토 적정생육표 매칭 시스템")
 st.markdown("---")
 
 # 데이터 파일 경로
 DATA_DIR = "data"
+SAMPLE_FILE = "test_tomato_data.xlsx"
+SAMPLE_FILE_PATH = os.path.join(DATA_DIR, SAMPLE_FILE)
+
+# 사용자 데이터 컬럼 매핑 (키 → Excel 컬럼명)
+EXACT_COLUMNS_MAP = {
+    '누적일사량': ['누적일사량(범위)'],
+    '외기기온': ['외기기온(범위)'],
+    '생산량': ['생산량(㎏/3.3㎡)'],
+    '일일평균온도': ['일일 평균온도(℃)'],
+    '주간평균온도': ['주간 평균온도(℃)'],
+    '야간평균온도': ['야간 평균온도(℃)'],
+    '새벽온도': ['새벽온도(℃)'],
+    '주간평균습도': ['주간 평균습도(%)'],
+    '잔존CO2': ['잔존 CO₂(ppm)'],
+    '급액EC': ['급액 EC(dS/m)'],
+    '급액pH': ['급액 pH'],
+    '1회급액량': ['1회 급액량(㏄/회)'],
+    '1일공급량': ['1일 공급량(㏄/day)']
+}
 
 # Excel 파일 목록
 EXCEL_FILES = {
@@ -58,28 +112,11 @@ def validate_user_data(df: pd.DataFrame) -> tuple:
     사용자 데이터에서 사용 가능한 컬럼을 찾기
     실제 제공된 정확한 컬럼명만 유효
     """
-    # 실제 Excel 파일의 정확한 컬럼명 매핑
-    exact_columns_map = {
-        '누적일사량': ['누적일사량(범위)'],
-        '외기기온': ['외기기온(범위)'],
-        '생산량': ['생산량(㎏/3.3㎡)'],
-        '일일평균온도': ['일일 평균온도(℃)'],
-        '주간평균온도': ['주간 평균온도(℃)'],
-        '야간평균온도': ['야간 평균온도(℃)'],
-        '새벽온도': ['새벽온도(℃)'],
-        '주간평균습도': ['주간 평균습도(%)'],
-        '잔존CO2': ['잔존 CO₂(ppm)'],
-        '급액EC': ['급액 EC(dS/m)'],
-        '급액pH': ['급액 pH'],
-        '1회급액량': ['1회 급액량(㏄/회)'],
-        '1일공급량': ['1일 공급량(㏄/day)']
-    }
-    
     found_columns = {}
     missing_columns = []
     
     # 각 컬럼에 대해 정확한 컬럼명을 찾기 (있는 것만)
-    for key, possible_names in exact_columns_map.items():
+    for key, possible_names in EXACT_COLUMNS_MAP.items():
         found = False
         for possible_name in possible_names:
             if possible_name in df.columns:
@@ -93,6 +130,65 @@ def validate_user_data(df: pd.DataFrame) -> tuple:
     # 최소 1개 컬럼이라도 있으면 유효한 것으로 처리
     is_valid = len(found_columns) > 0
     return is_valid, missing_columns, found_columns
+
+
+def get_excel_column_letter(df: pd.DataFrame, column_name: str) -> str:
+    """DataFrame 컬럼명에 해당하는 Excel 열 문자(A, B, ...) 반환"""
+    col_idx = df.columns.get_loc(column_name)
+    if isinstance(col_idx, slice):
+        col_idx = col_idx.start
+    return get_column_letter(col_idx + 1)
+
+
+def detect_outliers(
+    df: pd.DataFrame,
+    column_mapping: dict[str, str],
+    thresholds: dict[str, dict[str, float | None]],
+) -> pd.DataFrame:
+    """설정된 기준값을 벗어나는 이상치 위치·값 목록 반환"""
+    records = []
+
+    for key, col_name in column_mapping.items():
+        if key not in thresholds or col_name not in df.columns:
+            continue
+
+        min_val = thresholds[key].get("min")
+        max_val = thresholds[key].get("max")
+        if min_val is None and max_val is None:
+            continue
+
+        col_letter = get_excel_column_letter(df, col_name)
+        numeric_series = pd.to_numeric(df[col_name], errors="coerce")
+
+        for row_idx, value in numeric_series.items():
+            if pd.isna(value):
+                continue
+
+            excel_row = int(row_idx) + 2  # 1행=헤더, 데이터는 2행부터
+
+            if min_val is not None and value < min_val:
+                records.append({
+                    "변수": key,
+                    "컬럼명": col_name,
+                    "열": col_letter,
+                    "행": excel_row,
+                    "값": round(value, 2),
+                    "기준": f"하한 {min_val:.2f}",
+                    "이상 유형": "기준 미달",
+                })
+            if max_val is not None and value > max_val:
+                records.append({
+                    "변수": key,
+                    "컬럼명": col_name,
+                    "열": col_letter,
+                    "행": excel_row,
+                    "값": round(value, 2),
+                    "기준": f"상한 {max_val:.2f}",
+                    "이상 유형": "기준 초과",
+                })
+
+    return pd.DataFrame(records)
+
 
 def find_matching_range(reference_df: pd.DataFrame, user_data: pd.DataFrame, column_mapping: dict) -> tuple:
     """
@@ -309,9 +405,9 @@ def create_comparison_charts(reference_df: pd.DataFrame, user_df: pd.DataFrame, 
         ))
         
         fig.update_layout(
-            height=300,
-            margin=dict(t=80, b=20, l=20, r=20),
-            font={'size': 12}
+            height=250,  # 모바일에서 더 작은 높이
+            margin=dict(t=60, b=20, l=10, r=10),  # 모바일에서 더 작은 마진
+            font={'size': 10}  # 모바일에서 더 작은 폰트
         )
         
         # 범위 정보 추가
@@ -375,7 +471,21 @@ if step3:
 else:
     reference_df = None
 
-st.header("📁 사용자 데이터 업로드")
+st.header("📁 내 농가 데이터 업로드")
+
+# 예시 파일 다운로드
+if os.path.exists(SAMPLE_FILE_PATH):
+    with open(SAMPLE_FILE_PATH, "rb") as sample_file:
+        sample_bytes = sample_file.read()
+    st.download_button(
+        label=f"📥 농가 데이터 예시 파일 ({SAMPLE_FILE})",
+        data=sample_bytes,
+        file_name=SAMPLE_FILE,
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    st.info("💡 위 예시 파일을 다운로드하여 데이터 형식을 참고하거나 테스트용으로 사용하실 수 있습니다.")
+else:
+    st.warning(f"예시 파일을 찾을 수 없습니다: {SAMPLE_FILE_PATH}")
 
 # CSV/Excel 파일 업로드
 uploaded_file = st.file_uploader(
@@ -383,6 +493,21 @@ uploaded_file = st.file_uploader(
     type=['csv', 'xlsx', 'xls'],
     help="누적일사량, 외기기온, 온도, 습도 데이터가 포함된 CSV 또는 Excel 파일"
 )
+
+if "outlier_checked" not in st.session_state:
+    st.session_state.outlier_checked = False
+if "has_outliers" not in st.session_state:
+    st.session_state.has_outliers = False
+if "outliers_df" not in st.session_state:
+    st.session_state.outliers_df = pd.DataFrame()
+
+if uploaded_file is not None:
+    upload_key = f"{uploaded_file.name}_{uploaded_file.size}"
+    if st.session_state.get("upload_key") != upload_key:
+        st.session_state.upload_key = upload_key
+        st.session_state.outlier_checked = False
+        st.session_state.has_outliers = False
+        st.session_state.outliers_df = pd.DataFrame()
 
 if uploaded_file is not None:
     try:
@@ -419,11 +544,78 @@ if uploaded_file is not None:
             column_mapping = {}
             
         if user_df is not None and is_valid:
-            column_info = ", ".join([f"{col_name}" for col_name in column_mapping])
+            column_info = ", ".join(column_mapping.keys())
             st.success(f"발견된 분석 가능 컬럼: {column_info}")
-                            
-            # 매칭 실행 버튼
-            if st.button("🔍 구간 매칭 및 비교 분석", type="primary"):
+
+            st.subheader("📋 업로드 데이터 미리보기")
+            st.dataframe(user_df, use_container_width=True)
+
+            st.subheader("⚙️ 변수별 이상치 기준값 설정")
+            st.caption("각 변수의 허용 하한·상한을 설정한 뒤 이상치 탐지를 실행하세요. 기준을 벗어나는 값은 이상치로 표시됩니다.")
+
+            thresholds = {}
+            with st.expander("이상치 기준값 입력", expanded=True):
+                for key, col_name in column_mapping.items():
+                    numeric_data = pd.to_numeric(user_df[col_name], errors="coerce").dropna()
+                    if len(numeric_data) == 0:
+                        continue
+
+                    data_min = round(float(numeric_data.min()), 2)
+                    data_max = round(float(numeric_data.max()), 2)
+                    data_mean = round(float(numeric_data.mean()), 2)
+
+                    st.markdown(f"**{key}** (`{col_name}`) — 데이터 범위: {data_min:.2f} ~ {data_max:.2f}, 평균: {data_mean:.2f}")
+                    col_min, col_max = st.columns(2)
+                    with col_min:
+                        min_val = st.number_input(
+                            f"{key} 하한",
+                            value=data_min,
+                            step=1.0,
+                            format="%.2f",
+                            key=f"threshold_min_{key}",
+                        )
+                    with col_max:
+                        max_val = st.number_input(
+                            f"{key} 상한",
+                            value=data_max,
+                            step=1.0,
+                            format="%.2f",
+                            key=f"threshold_max_{key}",
+                        )
+                    thresholds[key] = {"min": min_val, "max": max_val}
+
+            if st.button("🔎 실시간 이상치 탐지", type="secondary"):
+                outliers_df = detect_outliers(user_df, column_mapping, thresholds)
+                st.session_state.outliers_df = outliers_df
+                st.session_state.outlier_checked = True
+                st.session_state.has_outliers = not outliers_df.empty
+
+            if st.session_state.outlier_checked:
+                if st.session_state.has_outliers:
+                    st.error(f"⚠️ 이상치 {len(st.session_state.outliers_df)}건이 발견되었습니다. 기준값을 조정하거나 데이터를 수정한 뒤 다시 탐지해주세요.")
+                    st.subheader("🚨 이상치 발생 위치")
+                    st.dataframe(
+                        st.session_state.outliers_df,
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+                else:
+                    st.success("✅ 이상치가 없습니다. 구간 매칭 및 비교 분석을 진행할 수 있습니다.")
+
+            analysis_enabled = (
+                st.session_state.outlier_checked
+                and not st.session_state.has_outliers
+            )
+            if not st.session_state.outlier_checked:
+                st.caption("구간 매칭 및 비교 분석을 실행하려면 먼저 이상치 탐지를 완료해주세요.")
+            elif st.session_state.has_outliers:
+                st.caption("이상치가 존재하여 구간 매칭 및 비교 분석 버튼이 비활성화되었습니다.")
+
+            if st.button(
+                "🔍 구간 매칭 및 비교 분석",
+                type="primary",
+                disabled=not analysis_enabled,
+            ):
                 if reference_df is not None:
                     with st.spinner("데이터 분석 중..."):
                         try:
@@ -443,18 +635,27 @@ if uploaded_file is not None:
                                 gauge_figs, valid_comparisons = create_comparison_charts(matched_reference, user_data, column_mapping)
                                 
                                 if gauge_figs:
-                                    # 게이지 차트들을 2개씩 한 줄로 배치
-                                    for i in range(0, len(gauge_figs), 2):
-                                        cols = st.columns(2)
-                                        
-                                        # 첫 번째 게이지
-                                        with cols[0]:
-                                            st.plotly_chart(gauge_figs[i], use_container_width=True)
-                                        
-                                        # 두 번째 게이지 (있는 경우)
-                                        if i + 1 < len(gauge_figs):
-                                            with cols[1]:
-                                                st.plotly_chart(gauge_figs[i + 1], use_container_width=True)
+                                    # 모바일 화면 크기 감지를 위한 JavaScript 대신 간단한 방법 사용
+                                    # 화면이 작을 때는 1개씩, 클 때는 2개씩 배치
+                                    use_single_column = len(gauge_figs) <= 3 or st.sidebar.button("📱 모바일 모드", help="차트를 세로로 배치합니다")
+                                    
+                                    if use_single_column:
+                                        # 모바일: 1개씩 배치
+                                        for fig in gauge_figs:
+                                            st.plotly_chart(fig, use_container_width=True)
+                                    else:
+                                        # 데스크톱: 2개씩 배치
+                                        for i in range(0, len(gauge_figs), 2):
+                                            cols = st.columns(2)
+                                            
+                                            # 첫 번째 게이지
+                                            with cols[0]:
+                                                st.plotly_chart(gauge_figs[i], use_container_width=True)
+                                            
+                                            # 두 번째 게이지 (있는 경우)
+                                            if i + 1 < len(gauge_figs):
+                                                with cols[1]:
+                                                    st.plotly_chart(gauge_figs[i + 1], use_container_width=True)
                                     
                                     # 요약 정보
                                     st.subheader("📋 분석 요약")
@@ -516,7 +717,8 @@ st.markdown("---")
 st.header("💡 사용법")
 st.markdown("""
 1. **사이드바에서 3단계 선택**: 일사량/생육상태별 → 비닐/유리 → 시트명
-2. **데이터 업로드**: CSV/Excel 파일 (누적일사량, 외기기온, 온도, 습도 등 포함)
-3. **분석 실행**: '구간 매칭 및 비교 분석' 버튼 클릭
-4. **결과 확인**: 매칭된 구간, 비교 그래프
+2. **데이터 업로드**: 예시 파일을 참고하여 CSV/Excel 파일 업로드
+3. **이상치 탐지**: 변수별 기준값 설정 후 '실시간 이상치 탐지' 실행
+4. **분석 실행**: 이상치가 없을 때만 '구간 매칭 및 비교 분석' 버튼 활성화
+5. **결과 확인**: 매칭된 구간, 비교 그래프
 """)
